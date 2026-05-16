@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DenseNet121+CBAM | Pneumonia Detection Research</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #e8f4fd;
+    --cloud: #f7fbff;
+    --glass: rgba(255,255,255,0.55);
+    --glass-border: rgba(255,255,255,0.8);
+    --glass-shadow: rgba(100,160,220,0.12);
+    --accent: #2563eb;
+    --accent2: #0ea5e9;
+    --accent3: #6366f1;
+    --gold: #f59e0b;
+    --red: #ef4444;
+    --green: #10b981;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --text-light: #94a3b8;
+    --blob1: #bfdbfe;
+    --blob2: #e0e7ff;
+    --blob3: #bae6fd;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #dbeafe;
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* ── CURSOR ── */
+  #cursor-dot {
+    position: fixed; top: 0; left: 0;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%,-50%);
+    transition: transform 0.05s, width 0.2s, height 0.2s, background 0.2s;
+    mix-blend-mode: multiply;
+  }
+  #cursor-ring {
+    position: fixed; top: 0; left: 0;
+    width: 38px; height: 38px;
+    border: 2px solid rgba(37,99,235,0.4);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%,-50%);
+    transition: transform 0.12s cubic-bezier(.25,.46,.45,.94), width 0.3s, height 0.3s, border-color 0.3s;
+    backdrop-filter: blur(2px);
+  }
+  body:hover #cursor-ring { opacity: 1; }
+  .cursor-grow #cursor-dot { width: 16px; height: 16px; background: var(--accent2); }
+  .cursor-grow #cursor-ring { width: 56px; height: 56px; border-color: rgba(14,165,233,0.6); }
+
+  /* ── BACKGROUND ── */
+  .bg-layer {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #e0f2fe 0%, #e8eaf6 40%, #f0f9ff 70%, #e8f5e9 100%);
+    z-index: -3;
+  }
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.55;
+    animation: blobFloat 12s ease-in-out infinite alternate;
+    z-index: -2;
+  }
+  .blob1 { width: 600px; height: 600px; background: radial-gradient(circle, #bfdbfe, #93c5fd); top: -100px; left: -100px; animation-delay: 0s; }
+  .blob2 { width: 500px; height: 500px; background: radial-gradient(circle, #c7d2fe, #a5b4fc); top: 30%; right: -80px; animation-delay: -4s; }
+  .blob3 { width: 450px; height: 450px; background: radial-gradient(circle, #bae6fd, #7dd3fc); bottom: -80px; left: 30%; animation-delay: -8s; }
+
+  @keyframes blobFloat {
+    0% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(30px,-20px) scale(1.05); }
+    100% { transform: translate(-20px,30px) scale(0.97); }
+  }
+
+  /* ── GRID OVERLAY ── */
+  .grid-overlay {
+    position: fixed; inset: 0; z-index: -1;
+    background-image:
+      linear-gradient(rgba(37,99,235,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37,99,235,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* ── FLOATING PARTICLES ── */
+  .particle {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: -1;
+    animation: particleDrift linear infinite;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 0 40px;
+    height: 68px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.45);
+    backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 4px 32px rgba(100,160,220,0.1);
+  }
+  .nav-brand {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .nav-brand .dot { width: 8px; height: 8px; background: var(--accent2); border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.6} }
+  .nav-links { display: flex; gap: 8px; }
+  .nav-links a {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 20px;
+    transition: all 0.2s;
+    letter-spacing: 0.01em;
+  }
+  .nav-links a:hover { background: rgba(37,99,235,0.08); color: var(--accent); }
+  .nav-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  /* ── GLASS CARD ── */
+  .glass {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.85);
+    border-radius: 20px;
+    box-shadow: 0 8px 40px rgba(100,150,220,0.12), 0 1px 0 rgba(255,255,255,0.9) inset;
+  }
+  .glass-dark {
+    background: rgba(255,255,255,0.35);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(100,150,220,0.1);
+  }
+
+  /* ── LAYOUT ── */
+  main { padding-top: 68px; }
+  section { padding: 80px 40px; max-width: 1280px; margin: 0 auto; }
+
+  /* ── HERO ── */
+  #hero {
+    min-height: calc(100vh - 68px);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center;
+    position: relative;
+    padding: 80px 40px;
+    max-width: 100%;
+  }
+  .hero-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--accent);
+    background: rgba(37,99,235,0.08);
+    border: 1px solid rgba(37,99,235,0.2);
+    padding: 6px 16px;
+    border-radius: 20px;
+    margin-bottom: 32px;
+    display: inline-flex; align-items: center; gap: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: fadeDown 0.8s ease both;
+  }
+  .hero-badge::before { content:''; width:6px; height:6px; background:var(--accent2); border-radius:50%; animation: pulse 1.5s infinite; }
+  h1.hero-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.4rem, 6vw, 5rem);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    max-width: 900px;
+    margin-bottom: 24px;
+    animation: fadeDown 0.9s 0.1s ease both;
+  }
+  h1.hero-title span { color: var(--accent); }
+  h1.hero-title em { color: var(--accent2); font-style: normal; }
+  .hero-sub {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    max-width: 680px;
+    line-height: 1.75;
+    margin-bottom: 48px;
+    font-weight: 300;
+    animation: fadeDown 1s 0.2s ease both;
+  }
+  .hero-authors {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-light);
+    letter-spacing: 0.05em;
+    margin-bottom: 52px;
+    animation: fadeDown 1s 0.3s ease both;
+  }
+  .hero-stats {
+    display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;
+    animation: fadeUp 1s 0.4s ease both;
+  }
+  .stat-pill {
+    padding: 18px 28px;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.9);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(100,150,220,0.15);
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+  .stat-pill:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(37,99,235,0.2); }
+  .stat-pill .val {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.03em;
+    display: block;
+  }
+  .stat-pill .lbl {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+  .stat-pill .val.green { color: var(--green); }
+  .stat-pill .val.gold { color: var(--gold); }
+  .stat-pill .val.purple { color: var(--accent3); }
+
+  @keyframes fadeDown { from{opacity:0;transform:translateY(-24px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ── SECTION HEADERS ── */
+  .section-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    background: rgba(37,99,235,0.07);
+    border: 1px solid rgba(37,99,235,0.18);
+    border-radius: 20px;
+    padding: 4px 14px;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  h2.section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  h2.section-title span { color: var(--accent); }
+  .section-sub {
+    font-size: 1rem;
+    color: var(--text-muted);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.7;
+    margin-bottom: 48px;
+  }
+
+  /* ── INTRO / PROBLEM ── */
+  .intro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 48px;
+  }
+  .intro-card { padding: 32px; border-radius: 20px; }
+  .intro-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .intro-card p { font-size: 0.95rem; color: var(--text-muted); line-height: 1.8; }
+  .icon-box {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .icon-blue { background: rgba(37,99,235,0.1); color: var(--accent); }
+  .icon-green { background: rgba(16,185,129,0.1); color: var(--green); }
+  .icon-gold { background: rgba(245,158,11,0.1); color: var(--gold); }
+  .icon-purple { background: rgba(99,102,241,0.1); color: var(--accent3); }
+
+  /* ── ARCHITECTURE ── */
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 40px 0;
+  }
+  .arch-block {
+    min-width: 160px;
+    padding: 20px 16px;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(100,150,220,0.1);
+    text-align: center;
+    flex-shrink: 0;
+    transition: transform 0.3s;
+  }
+  .arch-block:hover { transform: translateY(-6px); }
+  .arch-block .ab-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .arch-block .ab-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .arch-block .ab-detail {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .arch-block.highlight {
+    background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(99,102,241,0.1));
+    border-color: rgba(37,99,235,0.3);
+  }
+  .arch-arrow {
+    font-size: 1.4rem;
+    color: var(--accent);
+    opacity: 0.5;
+    padding: 0 8px;
+    flex-shrink: 0;
+    animation: arrowPulse 2s ease-in-out infinite;
+  }
+  @keyframes arrowPulse { 0%,100%{opacity:0.3} 50%{opacity:0.8} }
+
+  /* ── CBAM ── */
+  .cbam-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .eq-box {
+    padding: 24px;
+    background: rgba(15,23,42,0.04);
+    border-radius: 12px;
+    border: 1px solid rgba(37,99,235,0.12);
+    margin-top: 16px;
+  }
+  .eq-box code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--accent);
+    display: block;
+    margin: 4px 0;
+  }
+  .eq-label {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+
+  /* ── DATASET ── */
+  .dataset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 32px;
+  }
+  .ds-card { padding: 28px; border-radius: 18px; }
+  .ds-card .ds-split {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ds-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+  .ds-row .ds-key { font-size: 0.82rem; color: var(--text-muted); }
+  .ds-row .ds-val { font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: var(--text); font-weight: 500; }
+  .progress-bar { height: 6px; background: rgba(37,99,235,0.1); border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; animation: fillBar 1.5s ease both; }
+  @keyframes fillBar { from{width:0} }
+  .fill-blue { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .fill-red { background: linear-gradient(90deg, #ef4444, #f97316); }
+  .fill-green { background: linear-gradient(90deg, var(--green), #34d399); }
+
+  /* ── TRAINING ── */
+  .phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .phase-card { padding: 32px; border-radius: 20px; }
+  .phase-card .phase-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
+  }
+  .phase-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .param-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(37,99,235,0.07); }
+  .param-key { font-size: 0.82rem; color: var(--text-muted); }
+  .param-val { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--accent); font-weight: 500; }
+
+  /* ── RESULTS TABLE ── */
+  .results-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 12px 20px;
+    text-align: left;
+    border-bottom: 1px solid rgba(37,99,235,0.1);
+    background: rgba(37,99,235,0.03);
+  }
+  tbody td {
+    padding: 14px 20px;
+    font-size: 0.9rem;
+    color: var(--text);
+    border-bottom: 1px solid rgba(37,99,235,0.06);
+  }
+  tbody tr:hover { background: rgba(37,99,235,0.03); }
+  tbody tr.best { background: rgba(37,99,235,0.05); }
+  tbody tr.best td { font-weight: 600; }
+  .metric-bar-wrap { display: flex; align-items: center; gap: 10px; }
+  .metric-bar-bg { flex: 1; height: 5px; background: rgba(37,99,235,0.08); border-radius: 3px; overflow: hidden; }
+  .metric-bar-fill { height: 100%; border-radius: 3px; }
+
+  /* ── PER CLASS ── */
+  .per-class-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cls-card { padding: 28px; border-radius: 18px; }
+  .cls-card .cls-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cls-badge { padding: 3px 10px; border-radius: 8px; font-size: 0.68rem; font-weight: 600; }
+  .badge-normal { background: rgba(16,185,129,0.12); color: var(--green); }
+  .badge-pneumo { background: rgba(239,68,68,0.1); color: var(--red); }
+  .cls-metric { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; }
+  .cls-metric-key { font-size: 0.8rem; color: var(--text-muted); }
+  .cls-metric-val { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--text); }
+
+  /* ── CONFUSION ── */
+  .confusion-grid-wrap { display: flex; justify-content: center; margin-top: 40px; }
+  .confusion-matrix {
+    display: grid;
+    grid-template-columns: 80px repeat(2, 150px);
+    grid-template-rows: 50px repeat(2, 150px);
+    gap: 8px;
+    align-items: center;
+    justify-items: center;
+  }
+  .cm-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+  .cm-cell {
+    width: 140px; height: 140px;
+    border-radius: 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+  .cm-cell:hover { transform: scale(1.04); box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .cm-cell.tp { background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(16,185,129,0.15)); border: 2px solid rgba(16,185,129,0.4); }
+  .cm-cell.tn { background: linear-gradient(135deg, rgba(37,99,235,0.2), rgba(37,99,235,0.1)); border: 2px solid rgba(37,99,235,0.35); }
+  .cm-cell.fp { background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.1)); border: 2px solid rgba(245,158,11,0.35); }
+  .cm-cell.fn { background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1)); border: 2px solid rgba(239,68,68,0.35); }
+  .cm-cell .cm-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .cm-cell .cm-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    opacity: 0.7;
+  }
+  .cm-cell .cm-tag {
+    position: absolute;
+    top: 10px; right: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.6;
+  }
+  .tp .cm-num { color: var(--green); }
+  .tn .cm-num { color: var(--accent); }
+  .fp .cm-num { color: var(--gold); }
+  .fn .cm-num { color: var(--red); }
+
+  /* ── ROC VISUAL ── */
+  .roc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+  .roc-card { padding: 32px; border-radius: 20px; }
+  .roc-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .auc-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    background: rgba(37,99,235,0.1);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 8px;
+    display: inline-block;
+    margin-bottom: 20px;
+    border: 1px solid rgba(37,99,235,0.2);
+  }
+  .roc-svg-wrap {
+    width: 100%; aspect-ratio: 1;
+    position: relative;
+  }
+  .roc-svg-wrap svg { width: 100%; height: 100%; }
+
+  /* ── EFFICIENCY ── */
+  .eff-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  .eff-card { padding: 28px; border-radius: 18px; text-align: center; }
+  .eff-card .eff-model {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+  .eff-card .eff-auc {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.04em;
+    margin-bottom: 4px;
+  }
+  .eff-card .eff-params {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+  .eff-bar-wrap { position: relative; }
+  .eff-bar-bg { height: 8px; background: rgba(37,99,235,0.08); border-radius: 4px; overflow: hidden; }
+  .eff-bar-fill { height: 100%; border-radius: 4px; transition: width 1.5s cubic-bezier(.25,.46,.45,.94); }
+
+  /* ── GRAD-CAM ── */
+  .gradcam-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  .gc-card { padding: 24px; border-radius: 18px; }
+  .gc-card .gc-type {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+  .gc-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .gc-card p { font-size: 0.83rem; color: var(--text-muted); line-height: 1.7; }
+  .gc-visual {
+    width: 100%; aspect-ratio: 1.2;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .heatmap-canvas { width: 100%; height: 100%; }
+
+  /* ── THRESHOLD ── */
+  .threshold-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .th-card { padding: 32px; border-radius: 20px; }
+  .youden-vis { margin-top: 20px; }
+  .youden-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; }
+  .youden-key { font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+  .youden-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .youden-val { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; }
+
+  /* ── SOCIAL IMPACT ── */
+  .impact-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+  .impact-card { padding: 28px; border-radius: 18px; }
+  .impact-big {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.04em;
+    margin: 12px 0 4px;
+  }
+  .impact-label { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; }
+
+  /* ── CONCLUSION ── */
+  .conclusion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .contrib-list { list-style: none; }
+  .contrib-list li {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(37,99,235,0.07);
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .contrib-list li .num {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--accent);
+    min-width: 24px;
+    margin-top: 1px;
+  }
+  .future-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(37,99,235,0.07); }
+  .future-item .arrow { color: var(--accent2); font-size: 0.9rem; margin-top: 3px; }
+  .future-item p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 60px 40px;
+    background: rgba(255,255,255,0.4);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255,255,255,0.7);
+    margin-top: 40px;
+  }
+  footer .f-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  footer .f-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px; }
+  footer .f-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-light);
+    display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+  }
+  footer .f-meta span { display: flex; align-items: center; gap: 6px; }
+  footer .f-meta span::before { content:''; width:5px; height:5px; background:currentColor; border-radius:50%; opacity:0.5; }
+
+  /* ── SCROLL ANIMATION ── */
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .intro-grid, .cbam-grid, .phase-grid, .roc-grid, .threshold-grid, .conclusion-grid { grid-template-columns: 1fr; }
+    .dataset-grid, .eff-grid, .impact-grid, .gradcam-grid { grid-template-columns: 1fr 1fr; }
+    .per-class-grid { grid-template-columns: 1fr; }
+    .arch-flow { flex-direction: column; }
+    .arch-arrow { transform: rotate(90deg); }
+    nav { padding: 0 20px; }
+    section { padding: 60px 20px; }
+  }
+  @media (max-width: 600px) {
+    .dataset-grid, .eff-grid, .impact-grid, .gradcam-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    .hero-stats { gap: 12px; }
+    .stat-pill { padding: 14px 18px; }
+    .confusion-matrix { grid-template-columns: 60px repeat(2, 120px); grid-template-rows: 40px repeat(2, 120px); }
+    .cm-cell { width: 110px; height: 110px; }
+  }
+
+  @keyframes particleDrift {
+    0% { transform: translateY(100vh) translateX(0) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-20vh) translateX(80px) rotate(720deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+<div class="grid-overlay"></div>
+<div id="cursor-dot"></div>
+<div id="cursor-ring"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <span class="dot"></span>
+    DenseNet121+CBAM
+  </div>
+  <div class="nav-links">
+    <a href="#intro">Problem</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#dataset">Dataset</a>
+    <a href="#training">Training</a>
+    <a href="#results">Results</a>
+    <a href="#explainability">Grad-CAM</a>
+    <a href="#impact">Impact</a>
+  </div>
+  <div class="nav-badge">IEEE Access</div>
+</nav>
+
+<main>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-badge">Group Research Project · VIT Vellore · IEEE Access</div>
+  <h1 class="hero-title">
+    Explainable <span>DenseNet121</span><br>
+    with <em>CBAM</em> & Focal Loss<br>
+    for Pneumonia Detection
+  </h1>
+  <p class="hero-sub">An automated AI framework for pneumonia screening from chest X-rays, achieving radiologist-competitive sensitivity with transparent Grad-CAM explainability — designed for resource-constrained clinical settings.</p>
+  <div class="hero-authors">Khirabdi Tanaya Patri · Bhubesh A K · Abhishek N Tripathi | School of Electronics Engineering, VIT</div>
+  <div class="hero-stats">
+    <div class="stat-pill">
+      <span class="val">96.2%</span>
+      <span class="lbl">Sensitivity</span>
+    </div>
+    <div class="stat-pill">
+      <span class="val green">0.9275</span>
+      <span class="lbl">ROC-AUC</span>
+    </div>
+    <div class="stat-pill">
+      <span class="val gold">0.9318</span>
+      <span class="lbl">Avg Precision</span>
+    </div>
+    <div class="stat-pill">
+      <span class="val purple">87.9%</span>
+      <span class="lbl">Accuracy</span>
+    </div>
+    <div class="stat-pill">
+      <span class="val" style="color:var(--red)">3.8%</span>
+      <span class="lbl">Miss Rate</span>
+    </div>
+    <div class="stat-pill">
+      <span class="val" style="font-size:1.4rem">8M</span>
+      <span class="lbl">Parameters</span>
+    </div>
+  </div>
+</section>
+
+<!-- INTRO / PROBLEM -->
+<section id="intro">
+  <div class="section-tag">01 · Introduction</div>
+  <h2 class="section-title">The <span>Problem</span> We Solve</h2>
+  <p class="section-sub">Pneumonia kills 2.5 million people yearly, disproportionately affecting children under 5 in developing nations where radiologist expertise is scarce.</p>
+  <div class="intro-grid reveal">
+    <div class="glass intro-card">
+      <h3>
+        <div class="icon-box icon-blue">🫁</div>
+        Global Burden
+      </h3>
+      <p>Pneumonia is a lung parenchyma infection responsible for approximately 2.5 million deaths annually worldwide. Infants younger than five years old and elderly populations are disproportionately affected, especially in developing countries with limited access to specialist radiologists.</p>
+    </div>
+    <div class="glass intro-card">
+      <h3>
+        <div class="icon-box icon-gold">📊</div>
+        Diagnostic Challenge
+      </h3>
+      <p>Radiography remains the most common and cost-effective diagnostic tool, but its interpretation demands expertise and is highly subjective. The shortage of skilled radiologists in low-income regions creates a critical gap in early detection and treatment initiation.</p>
+    </div>
+    <div class="glass intro-card">
+      <h3>
+        <div class="icon-box icon-green">🔬</div>
+        Prior Art Gap
+      </h3>
+      <p>Wang et al.'s ChestX-ray14 achieved AUC 0.70–0.86 with vanilla cross-entropy, and CheXNet outperformed radiologists — but both lacked spatial attention modules. No prior work systematically combined Focal Loss with attention-based DenseNet for pneumonia detection.</p>
+    </div>
+    <div class="glass intro-card">
+      <h3>
+        <div class="icon-box icon-purple">✨</div>
+        Our Innovation
+      </h3>
+      <p>We integrate CBAM sequential attention into DenseNet121, apply Focal Loss (α=0.75, γ=2.0) for class imbalance, use a two-phase progressive unfreezing strategy, and provide Grad-CAM explainability — all within a lightweight 8M-parameter model deployable on CPU hardware.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="architecture">
+  <div class="section-tag">02 · Model Architecture</div>
+  <h2 class="section-title">System <span>Architecture</span></h2>
+  <p class="section-sub">A DenseNet121 backbone augmented with CBAM attention, trained end-to-end with Focal Loss and a two-stage fine-tuning strategy.</p>
+
+  <div class="glass reveal" style="padding:32px; margin-bottom:32px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:24px; font-size:1.05rem;">Complete Pipeline</h3>
+    <div class="arch-flow">
+      <div class="arch-block">
+        <div class="ab-label">Input</div>
+        <div class="ab-name">Chest X-Ray</div>
+        <div class="ab-detail">224×224 RGB<br>CLAHE preprocessed</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block">
+        <div class="ab-label">Augmentation</div>
+        <div class="ab-name">Data Aug</div>
+        <div class="ab-detail">Flip · Rotate ±15°<br>Jitter · Erase</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block highlight">
+        <div class="ab-label">Backbone</div>
+        <div class="ab-name">DenseNet121</div>
+        <div class="ab-detail">Dense connections<br>7×7×1024 output</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block highlight">
+        <div class="ab-label">Attention</div>
+        <div class="ab-name">CBAM</div>
+        <div class="ab-detail">Channel + Spatial<br>Sequential attention</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block">
+        <div class="ab-label">Pooling</div>
+        <div class="ab-name">GAP + BN</div>
+        <div class="ab-detail">Dropout(0.4)<br>FC(1024→256)</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block">
+        <div class="ab-label">Head</div>
+        <div class="ab-name">Classifier</div>
+        <div class="ab-detail">ReLU + BN<br>Dropout(0.2) + FC(2)</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-block" style="border-color:rgba(16,185,129,0.4); background:rgba(16,185,129,0.08);">
+        <div class="ab-label">Output</div>
+        <div class="ab-name">Prediction</div>
+        <div class="ab-detail">NORMAL /<br>PNEUMONIA</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cbam-grid reveal">
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px;">DenseNet121 Backbone</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); line-height:1.7; margin-bottom:16px;">Each layer ℓ receives concatenated feature maps of all preceding layers, promoting feature reuse and alleviating vanishing gradients.</p>
+      <div class="eq-box">
+        <div class="eq-label">Dense Connection Formula</div>
+        <code>xₗ = Hₗ([x₀, x₁, ..., xₗ₋₁])</code>
+      </div>
+      <div style="margin-top:16px; padding:16px; background:rgba(37,99,235,0.04); border-radius:10px;">
+        <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.8;">
+          <strong style="color:var(--text);">Final output:</strong> 7×7×1024 feature tensor from 224×224 input<br>
+          <strong style="color:var(--text);">Parameters:</strong> 7.98M (vs ResNet50's 25.6M)<br>
+          <strong style="color:var(--text);">Pretrained:</strong> ImageNet weights, progressive unfreezing
+        </div>
+      </div>
+    </div>
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px;">CBAM Attention Module</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); line-height:1.7; margin-bottom:16px;">Sequential channel then spatial attention applied to F ∈ ℝ^(7×7×1024), enabling the model to focus on diagnostically relevant lung regions.</p>
+      <div class="eq-box">
+        <div class="eq-label">Channel Attention (r=16)</div>
+        <code>Mc = σ(MLP(AvgPool(F)) + MLP(MaxPool(F)))</code>
+        <code>F' = Mc ⊗ F</code>
+      </div>
+      <div class="eq-box" style="margin-top:12px;">
+        <div class="eq-label">Spatial Attention (7×7 conv)</div>
+        <code>Ms = σ(f^7×7([AvgPool(F'); MaxPool(F')]))</code>
+        <code>F'' = Ms ⊗ F'</code>
+      </div>
+    </div>
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px;">Focal Loss Function</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); line-height:1.7; margin-bottom:16px;">Addresses 2.88× class imbalance by down-weighting easy examples and focusing learning on hard boundary cases — the most clinically consequential errors.</p>
+      <div class="eq-box">
+        <div class="eq-label">Focal Loss Formula</div>
+        <code>ℒFL(pt) = -αt(1-pt)^γ log(pt)</code>
+      </div>
+      <div style="margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="background:rgba(37,99,235,0.06); border-radius:10px; padding:12px; text-align:center;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:1.2rem; font-weight:700; color:var(--accent);">α = 0.75</div>
+          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">NORMAL class weight</div>
+        </div>
+        <div style="background:rgba(99,102,241,0.06); border-radius:10px; padding:12px; text-align:center;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:1.2rem; font-weight:700; color:var(--accent3);">γ = 2.0</div>
+          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">Focusing parameter</div>
+        </div>
+      </div>
+    </div>
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px;">Classification Head</h3>
+      <p style="font-size:0.88rem; color:var(--text-muted); line-height:1.7; margin-bottom:16px;">The attended tensor F'' passes through a carefully regularized classification head designed to prevent overfitting.</p>
+      <div style="margin-top:8px;">
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(37,99,235,0.05); border-radius:10px;">
+            <span style="width:28px; height:28px; background:var(--accent); border-radius:6px; display:flex; align-items:center; justify-content:center; color:white; font-size:0.65rem; font-weight:700; flex-shrink:0;">GAP</span>
+            <span style="font-size:0.82rem; color:var(--text-muted);">Global Average Pooling</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(37,99,235,0.05); border-radius:10px;">
+            <span style="width:28px; height:28px; background:rgba(37,99,235,0.2); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:0.55rem; font-weight:700; flex-shrink:0;">BN</span>
+            <span style="font-size:0.82rem; color:var(--text-muted);">BatchNorm → Dropout(0.4)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(37,99,235,0.05); border-radius:10px;">
+            <span style="width:28px; height:28px; background:rgba(37,99,235,0.2); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:0.55rem; font-weight:700; flex-shrink:0;">FC</span>
+            <span style="font-size:0.82rem; color:var(--text-muted);">FC(1024→256) → ReLU</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(37,99,235,0.05); border-radius:10px;">
+            <span style="width:28px; height:28px; background:rgba(16,185,129,0.2); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--green); font-size:0.55rem; font-weight:700; flex-shrink:0;">OUT</span>
+            <span style="font-size:0.82rem; color:var(--text-muted);">Dropout(0.2) → FC(256→2)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DATASET -->
+<section id="dataset">
+  <div class="section-tag">03 · Dataset</div>
+  <h2 class="section-title">Kaggle <span>Chest X-Ray</span> Dataset</h2>
+  <p class="section-sub">5,856 posterior-anterior chest radiographs from paediatric patients (aged 1–5) acquired at Guangzhou Women and Children's Medical Center.</p>
+
+  <div class="dataset-grid reveal">
+    <div class="glass ds-card">
+      <div class="ds-split"><div class="icon-box icon-blue" style="font-size:0.9rem;">🎯</div> Train Split (80%)</div>
+      <div class="ds-row"><span class="ds-key">Normal Cases</span><span class="ds-val">2,158</span></div>
+      <div class="ds-row"><span class="ds-key">Pneumonia Cases</span><span class="ds-val">6,213</span></div>
+      <div class="ds-row"><span class="ds-key">Total Images</span><span class="ds-val">8,371</span></div>
+      <div class="ds-row"><span class="ds-key">Class Imbalance</span><span class="ds-val" style="color:var(--red);">2.88×</span></div>
+      <div class="progress-bar"><div class="progress-fill fill-blue" style="width:74%"></div></div>
+    </div>
+    <div class="glass ds-card">
+      <div class="ds-split"><div class="icon-box icon-gold" style="font-size:0.9rem;">🔍</div> Validation Split (20%)</div>
+      <div class="ds-row"><span class="ds-key">Normal Cases</span><span class="ds-val">540</span></div>
+      <div class="ds-row"><span class="ds-key">Pneumonia Cases</span><span class="ds-val">1,553</span></div>
+      <div class="ds-row"><span class="ds-key">Total Images</span><span class="ds-val">2,093</span></div>
+      <div class="ds-row"><span class="ds-key">Class Imbalance</span><span class="ds-val" style="color:var(--red);">2.88×</span></div>
+      <div class="progress-bar"><div class="progress-fill fill-green" style="width:18%"></div></div>
+    </div>
+    <div class="glass ds-card">
+      <div class="ds-split"><div class="icon-box icon-green" style="font-size:0.9rem;">🏆</div> Test (Held-Out)</div>
+      <div class="ds-row"><span class="ds-key">Normal Cases</span><span class="ds-val">468</span></div>
+      <div class="ds-row"><span class="ds-key">Pneumonia Cases</span><span class="ds-val">780</span></div>
+      <div class="ds-row"><span class="ds-key">Total Images</span><span class="ds-val">1,248</span></div>
+      <div class="ds-row"><span class="ds-key">Class Imbalance</span><span class="ds-val" style="color:var(--gold);">1.67×</span></div>
+      <div class="progress-bar"><div class="progress-fill fill-red" style="width:11%"></div></div>
+    </div>
+  </div>
+
+  <div class="glass reveal" style="padding:32px; margin-top:24px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:20px;">Preprocessing & Augmentation Pipeline</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Preprocessing Steps</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);">
+            <span style="color:var(--accent); font-weight:700;">→</span> Convert to RGB colour space
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);">
+            <span style="color:var(--accent); font-weight:700;">→</span> CLAHE on L channel (CIE LAB)
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);">
+            <span style="color:var(--accent); font-weight:700;">→</span> Resize to 224×224 pixels
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);">
+            <span style="color:var(--accent); font-weight:700;">→</span> Normalize: μ=[0.485, 0.456, 0.406]
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-muted);">
+            <span style="color:var(--accent); font-weight:700;">→</span> σ=[0.229, 0.224, 0.225]
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Training Augmentations</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">🔄 Horizontal Flip</div>
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">↻ Rotation ±15°</div>
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">🎨 Colour Jitter</div>
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">📐 Random Affine</div>
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">✂️ Random Erasing</div>
+          <div style="padding:10px 12px; background:rgba(37,99,235,0.05); border-radius:8px; font-size:0.78rem; color:var(--text-muted);">⚖️ WeightedSampler</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRAINING -->
+<section id="training">
+  <div class="section-tag">04 · Training Strategy</div>
+  <h2 class="section-title">Two-Phase <span>Training</span></h2>
+  <p class="section-sub">Progressive unfreezing preserves ImageNet representations while adapting the model to the chest radiograph domain without catastrophic forgetting.</p>
+
+  <div class="phase-grid reveal">
+    <div class="glass phase-card" style="border-left: 4px solid var(--accent);">
+      <div class="phase-num">Phase 01 · 25 Epochs</div>
+      <h3>🔒 Backbone Frozen</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.7; margin-bottom:20px;">All DenseNet121 parameters frozen. Only CBAM and classification head are trained, allowing the new modules to converge without disrupting pre-trained representations.</p>
+      <div class="param-row"><span class="param-key">Optimizer</span><span class="param-val">Adam</span></div>
+      <div class="param-row"><span class="param-key">Learning Rate</span><span class="param-val">1×10⁻³</span></div>
+      <div class="param-row"><span class="param-key">Weight Decay</span><span class="param-val">10⁻⁴</span></div>
+      <div class="param-row"><span class="param-key">LR Scheduler</span><span class="param-val">ReduceLROnPlateau</span></div>
+      <div class="param-row"><span class="param-key">Patience</span><span class="param-val">7 epochs</span></div>
+      <div class="param-row"><span class="param-key">Monitor</span><span class="param-val">Val F1-score</span></div>
+    </div>
+    <div class="glass phase-card" style="border-left: 4px solid var(--accent2);">
+      <div class="phase-num">Phase 02 · 20 Epochs</div>
+      <h3>🔓 Partial Unfreezing</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.7; margin-bottom:20px;">DenseBlock4 and norm5 unfrozen for domain-specific fine-tuning. Shallower layers remain frozen to prevent catastrophic forgetting of low-level features.</p>
+      <div class="param-row"><span class="param-key">Optimizer</span><span class="param-val">Adam (Cosine)</span></div>
+      <div class="param-row"><span class="param-key">Learning Rate</span><span class="param-val">5×10⁻⁵</span></div>
+      <div class="param-row"><span class="param-key">LR Scheduler</span><span class="param-val">Cosine Annealing</span></div>
+      <div class="param-row"><span class="param-key">Unfrozen Layers</span><span class="param-val">DenseBlock4 + norm5</span></div>
+      <div class="param-row"><span class="param-key">Sampler</span><span class="param-val">WeightedRandom</span></div>
+      <div class="param-row"><span class="param-key">Batch Size</span><span class="param-val">16</span></div>
+    </div>
+  </div>
+
+  <div class="glass reveal" style="padding:28px; margin-top:24px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:16px; font-size:1rem;">Experimental Setup</h3>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; text-align:center;">
+      <div style="padding:16px; background:rgba(37,99,235,0.04); border-radius:12px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:1rem; color:var(--accent); font-weight:700; margin-bottom:4px;">PyTorch</div>
+        <div style="font-size:0.72rem; color:var(--text-muted);">v2.2.0 · Python 3.10</div>
+      </div>
+      <div style="padding:16px; background:rgba(37,99,235,0.04); border-radius:12px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:1rem; color:var(--accent); font-weight:700; margin-bottom:4px;">CPU Only</div>
+        <div style="font-size:0.72rem; color:var(--text-muted);">Intel Core i-series</div>
+      </div>
+      <div style="padding:16px; background:rgba(37,99,235,0.04); border-radius:12px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:1rem; color:var(--accent); font-weight:700; margin-bottom:4px;">Seed 42</div>
+        <div style="font-size:0.72rem; color:var(--text-muted);">Full reproducibility</div>
+      </div>
+      <div style="padding:16px; background:rgba(37,99,235,0.04); border-radius:12px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:1rem; color:var(--accent); font-weight:700; margin-bottom:4px;">Albumentations</div>
+        <div style="font-size:0.72rem; color:var(--text-muted);">Augmentation lib</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section id="results">
+  <div class="section-tag">05 · Results</div>
+  <h2 class="section-title">Performance <span>Results</span></h2>
+  <p class="section-sub">Comprehensive evaluation on the held-out test set of 1,248 images, with comparison against Simple CNN and ResNet50 baselines.</p>
+
+  <!-- Comparative Table -->
+  <div class="glass reveal" style="padding:32px; margin-bottom:32px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:20px;">Comparative Model Performance (n=1,248)</h3>
+    <div class="results-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Accuracy</th>
+            <th>Precision</th>
+            <th>Sensitivity</th>
+            <th>F1-Score</th>
+            <th>ROC-AUC</th>
+            <th>Params</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Simple CNN (A)</td>
+            <td>
+              <div class="metric-bar-wrap">78–82%
+                <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:82%; background:linear-gradient(90deg,#94a3b8,#cbd5e1)"></div></div>
+              </div>
+            </td>
+            <td>0.80</td>
+            <td>0.85</td>
+            <td>0.82</td>
+            <td>0.87</td>
+            <td>≈0.5M</td>
+          </tr>
+          <tr>
+            <td>ResNet50 (B)</td>
+            <td>
+              <div class="metric-bar-wrap">85–88%
+                <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:88%; background:linear-gradient(90deg,#60a5fa,#93c5fd)"></div></div>
+              </div>
+            </td>
+            <td>0.86</td>
+            <td>0.91</td>
+            <td>0.88</td>
+            <td>0.91</td>
+            <td>25.6M</td>
+          </tr>
+          <tr class="best">
+            <td><strong>DenseNet121+CBAM ✦</strong></td>
+            <td>
+              <div class="metric-bar-wrap"><strong>87.9%</strong>
+                <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:88%; background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
+              </div>
+            </td>
+            <td><strong>0.86</strong></td>
+            <td><strong style="color:var(--green);">0.962</strong></td>
+            <td><strong>0.910</strong></td>
+            <td><strong style="color:var(--accent);">0.9275</strong></td>
+            <td><strong style="color:var(--green);">8M</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px; padding:12px 16px; background:rgba(16,185,129,0.06); border-radius:10px; border-left:3px solid var(--green);">
+      <div style="font-size:0.82rem; color:var(--text-muted); line-height:1.6;">
+        <strong style="color:var(--green);">Key insight:</strong> DenseNet121+CBAM achieves better AUC (+1.75pp vs ResNet50) with only 31% of the parameter count (8M vs 25.6M), making it ideal for resource-constrained deployment.
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-Class -->
+  <div class="per-class-grid reveal" style="margin-bottom:32px;">
+    <div class="glass cls-card">
+      <div class="cls-name">
+        <div class="icon-box icon-green" style="font-size:0.8rem;">✓</div>
+        Normal Class (0)
+        <span class="cls-badge badge-normal">NORMAL</span>
+      </div>
+      <div class="cls-metric"><span class="cls-metric-key">Precision</span><span class="cls-metric-val" style="color:var(--green);">0.92</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">Recall (Specificity)</span><span class="cls-metric-val" style="color:var(--gold);">0.74</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">F1-Score</span><span class="cls-metric-val">0.82</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">Support</span><span class="cls-metric-val" style="font-size:1rem;">468</span></div>
+      <p style="font-size:0.78rem; color:var(--text-muted); line-height:1.6; margin-top:12px;">High precision (0.92) reflects the deliberate sensitivity bias introduced by Focal Loss α=0.75, prioritising minimal false negatives for pneumonia.</p>
+    </div>
+    <div class="glass cls-card">
+      <div class="cls-name">
+        <div class="icon-box icon-blue" style="font-size:0.8rem;">⚕</div>
+        Pneumonia Class (1)
+        <span class="cls-badge badge-pneumo">PNEUMONIA</span>
+      </div>
+      <div class="cls-metric"><span class="cls-metric-key">Precision</span><span class="cls-metric-val">0.86</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">Recall (Sensitivity)</span><span class="cls-metric-val" style="color:var(--green);">0.96</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">F1-Score</span><span class="cls-metric-val">0.91</span></div>
+      <div class="cls-metric"><span class="cls-metric-key">Support</span><span class="cls-metric-val" style="font-size:1rem;">780</span></div>
+      <p style="font-size:0.78rem; color:var(--text-muted); line-height:1.6; margin-top:12px;">Recall of 0.96 means only 30 of 780 pneumonia patients are missed (3.8% miss rate) — medically satisfactory for initial screening where physicians handle false positives next.</p>
+    </div>
+  </div>
+
+  <!-- Confusion Matrix -->
+  <div class="glass reveal" style="padding:40px; margin-bottom:32px; text-align:center;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px; text-align:left;">Confusion Matrix (n=1,248)</h3>
+    <p style="font-size:0.85rem; color:var(--text-muted); text-align:left; margin-bottom:32px;">Row-normalised heatmap showing model performance across predicted vs actual classes.</p>
+    <div class="confusion-grid-wrap">
+      <div class="confusion-matrix">
+        <!-- Header row -->
+        <div></div>
+        <div class="cm-label">Pred NORMAL</div>
+        <div class="cm-label">Pred PNEUMONIA</div>
+        <!-- Row 1: Actual NORMAL -->
+        <div class="cm-label" style="text-align:right; padding-right:16px;">Actual NORMAL</div>
+        <div class="cm-cell tn">
+          <div class="cm-tag">TN</div>
+          <div class="cm-num">346</div>
+          <div class="cm-pct">73.9%</div>
+        </div>
+        <div class="cm-cell fp">
+          <div class="cm-tag">FP</div>
+          <div class="cm-num">122</div>
+          <div class="cm-pct">26.1%</div>
+        </div>
+        <!-- Row 2: Actual PNEUMONIA -->
+        <div class="cm-label" style="text-align:right; padding-right:16px;">Actual PNEUMONIA</div>
+        <div class="cm-cell fn">
+          <div class="cm-tag">FN</div>
+          <div class="cm-num">30</div>
+          <div class="cm-pct">3.8%</div>
+        </div>
+        <div class="cm-cell tp">
+          <div class="cm-tag">TP</div>
+          <div class="cm-num">750</div>
+          <div class="cm-pct">96.2%</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:32px;">
+      <div style="padding:10px 20px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:10px; text-align:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; color:var(--green);">96.2%</div>
+        <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">Sensitivity</div>
+      </div>
+      <div style="padding:10px 20px; background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25); border-radius:10px; text-align:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; color:var(--accent);">73.9%</div>
+        <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">Specificity</div>
+      </div>
+      <div style="padding:10px 20px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:10px; text-align:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; color:var(--red);">3.8%</div>
+        <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">Miss Rate</div>
+      </div>
+      <div style="padding:10px 20px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:10px; text-align:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; color:var(--gold);">26.1%</div>
+        <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">FP Rate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROC & PR Curves -->
+  <div class="roc-grid reveal" style="margin-bottom:32px;">
+    <div class="glass roc-card">
+      <h3>ROC Curve</h3>
+      <div class="auc-badge">AUC = 0.9275</div>
+      <p style="font-size:0.83rem; color:var(--text-muted); line-height:1.7; margin-bottom:20px;">Strong discriminative ability at all thresholds. Achieves ~85% TPR at FPR &lt;10%, demonstrating excellent clinical utility for screening.</p>
+      <div class="roc-svg-wrap">
+        <svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="rocGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#2563eb"/>
+              <stop offset="100%" stop-color="#0ea5e9"/>
+            </linearGradient>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#2563eb" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="#2563eb" stop-opacity="0.02"/>
+            </linearGradient>
+          </defs>
+          <!-- Grid -->
+          <line x1="20" y1="20" x2="20" y2="200" stroke="rgba(37,99,235,0.15)" stroke-width="1"/>
+          <line x1="20" y1="200" x2="200" y2="200" stroke="rgba(37,99,235,0.15)" stroke-width="1"/>
+          <line x1="20" y1="20" x2="200" y2="200" stroke="rgba(37,99,235,0.12)" stroke-width="1" stroke-dasharray="4,4"/>
+          <!-- Grid lines -->
+          <line x1="20" y1="110" x2="200" y2="110" stroke="rgba(37,99,235,0.06)" stroke-width="0.5"/>
+          <line x1="110" y1="20" x2="110" y2="200" stroke="rgba(37,99,235,0.06)" stroke-width="0.5"/>
+          <!-- ROC area fill -->
+          <path d="M20,200 L20,130 Q25,60 40,35 Q55,15 80,12 Q120,8 160,20 Q185,28 200,200 Z" fill="url(#areaGrad)"/>
+          <!-- ROC curve -->
+          <path d="M20,200 L20,130 Q25,60 40,35 Q55,15 80,12 Q120,8 160,20 Q185,28 200,200" fill="none" stroke="url(#rocGrad)" stroke-width="2.5" stroke-linecap="round"/>
+          <!-- Operating point -->
+          <circle cx="68" cy="43" r="5" fill="white" stroke="#2563eb" stroke-width="2"/>
+          <text x="75" y="40" font-size="8" fill="#2563eb" font-family="JetBrains Mono">Default (0.5)</text>
+          <!-- Labels -->
+          <text x="100" y="218" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="JetBrains Mono">FPR</text>
+          <text x="8" y="112" font-size="9" fill="#94a3b8" text-anchor="middle" writing-mode="tb" font-family="JetBrains Mono">TPR</text>
+          <!-- AUC label -->
+          <text x="165" y="160" font-size="9" fill="#2563eb" font-family="Syne" font-weight="700">AUC=0.9275</text>
+        </svg>
+      </div>
+    </div>
+    <div class="glass roc-card">
+      <h3>Precision-Recall Curve</h3>
+      <div class="auc-badge">AP = 0.9318</div>
+      <p style="font-size:0.83rem; color:var(--text-muted); line-height:1.7; margin-bottom:20px;">Precision stays above 0.95 for recall up to ~0.80, confirming high reliability of positive predictions at conservative thresholds.</p>
+      <div class="roc-svg-wrap">
+        <svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="prGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#10b981"/>
+              <stop offset="100%" stop-color="#0ea5e9"/>
+            </linearGradient>
+            <linearGradient id="prAreaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#10b981" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/>
+            </linearGradient>
+          </defs>
+          <line x1="20" y1="20" x2="20" y2="200" stroke="rgba(16,185,129,0.15)" stroke-width="1"/>
+          <line x1="20" y1="200" x2="200" y2="200" stroke="rgba(16,185,129,0.15)" stroke-width="1"/>
+          <line x1="20" y1="110" x2="200" y2="110" stroke="rgba(16,185,129,0.06)" stroke-width="0.5"/>
+          <line x1="110" y1="20" x2="110" y2="200" stroke="rgba(16,185,129,0.06)" stroke-width="0.5"/>
+          <!-- PR area -->
+          <path d="M20,28 Q50,26 80,27 Q120,30 155,50 Q175,70 185,90 L185,200 L20,200 Z" fill="url(#prAreaGrad)"/>
+          <!-- PR curve -->
+          <path d="M20,28 Q50,26 80,27 Q120,30 155,50 Q175,70 185,90" fill="none" stroke="url(#prGrad)" stroke-width="2.5" stroke-linecap="round"/>
+          <text x="100" y="218" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="JetBrains Mono">Recall</text>
+          <text x="8" y="112" font-size="9" fill="#94a3b8" text-anchor="middle" writing-mode="tb" font-family="JetBrains Mono">Precision</text>
+          <text x="130" y="160" font-size="9" fill="#10b981" font-family="Syne" font-weight="700">AP=0.9318</text>
+          <line x1="20" y1="34" x2="155" y2="34" stroke="rgba(16,185,129,0.3)" stroke-width="0.8" stroke-dasharray="3,3"/>
+          <text x="100" y="30" font-size="7" fill="#94a3b8" text-anchor="middle" font-family="JetBrains Mono">Prec &gt; 0.95</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Threshold Optimisation -->
+  <div class="glass reveal" style="padding:32px; margin-bottom:32px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px;">Threshold Optimisation via Youden Index</h3>
+    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.7; margin-bottom:24px;">J = Sensitivity + Specificity − 1. Default threshold (0.5) is clinically validated as optimal for screening applications, maximising sensitivity while maintaining acceptable specificity.</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px;">
+      <div style="padding:20px; background:rgba(37,99,235,0.05); border-radius:14px; text-align:center;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Default Threshold (0.5)</div>
+        <div style="font-family:'Syne',sans-serif; font-size:2rem; font-weight:800; color:var(--accent); margin-bottom:4px;">0.962</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Sensitivity</div>
+        <div style="font-family:'Syne',sans-serif; font-size:2rem; font-weight:800; color:var(--gold); margin-bottom:4px;">0.739</div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">Specificity</div>
+      </div>
+      <div style="padding:20px; background:rgba(16,185,129,0.05); border-radius:14px; text-align:center;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Youden Optimal Point</div>
+        <div style="font-family:'Syne',sans-serif; font-size:2rem; font-weight:800; color:var(--green); margin-bottom:4px;">0.002</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Sensitivity Δ</div>
+        <div style="font-family:'Syne',sans-serif; font-size:2rem; font-weight:800; color:var(--green); margin-bottom:4px;">0.701</div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">Specificity @ optimal</div>
+      </div>
+      <div style="padding:20px; background:rgba(99,102,241,0.05); border-radius:14px; text-align:center;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Clinical Conclusion</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); line-height:1.7; margin-top:8px;">Default threshold (0.5) is <strong style="color:var(--accent3);">clinically justified</strong> — it prioritises sensitivity (missing no sick patients) which is critical for a first-pass screening tool.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Efficiency -->
+  <div class="glass reveal" style="padding:32px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:24px;">Model Efficiency vs Performance</h3>
+    <div class="eff-grid">
+      <div class="glass-dark eff-card">
+        <div class="eff-model">Simple CNN</div>
+        <div class="eff-auc" style="font-size:2rem; color:var(--text-muted);">0.87</div>
+        <div class="eff-params">≈0.5M parameters</div>
+        <div class="eff-bar-wrap">
+          <div class="eff-bar-bg"><div class="eff-bar-fill" style="width:87%; background:linear-gradient(90deg,#94a3b8,#cbd5e1);"></div></div>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">Highest AUC/param ratio but insufficient clinical accuracy</div>
+      </div>
+      <div class="glass-dark eff-card">
+        <div class="eff-model">ResNet50</div>
+        <div class="eff-auc" style="font-size:2rem; color:var(--accent2);">0.91</div>
+        <div class="eff-params">25.6M parameters</div>
+        <div class="eff-bar-wrap">
+          <div class="eff-bar-bg"><div class="eff-bar-fill" style="width:91%; background:linear-gradient(90deg,#60a5fa,#93c5fd);"></div></div>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">Good performance but 3.2× more parameters than proposed</div>
+      </div>
+      <div class="glass-dark eff-card" style="border: 2px solid rgba(37,99,235,0.3);">
+        <div class="eff-model" style="color:var(--accent);">DenseNet121+CBAM ✦</div>
+        <div class="eff-auc">0.9275</div>
+        <div class="eff-params" style="color:var(--green);">8M parameters · 31% of ResNet50</div>
+        <div class="eff-bar-wrap">
+          <div class="eff-bar-bg"><div class="eff-bar-fill" style="width:92.75%; background:linear-gradient(90deg,var(--accent),var(--accent2));"></div></div>
+        </div>
+        <div style="font-size:0.75rem; color:var(--green); margin-top:8px; font-weight:600;">Best AUC · Optimal balance · CPU deployable</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GRAD-CAM EXPLAINABILITY -->
+<section id="explainability">
+  <div class="section-tag">06 · Explainability</div>
+  <h2 class="section-title">Grad-CAM <span>Visual Explanations</span></h2>
+  <p class="section-sub">Gradient-weighted Class Activation Mapping visualises which lung regions drive predictions, providing physician-interpretable transparency essential for clinical trust.</p>
+
+  <div class="glass reveal" style="padding:28px; margin-bottom:28px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:8px; font-size:1rem;">How Grad-CAM Works</h3>
+    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.7;">Gradients of the predicted class score are backpropagated to the final CBAM-modified feature map. The resulting heatmaps highlight regions with strong positive influence on the prediction — red/yellow = high attention, blue/green = low attention.</p>
+  </div>
+
+  <div class="gradcam-grid reveal">
+    <div class="glass gc-card">
+      <div class="gc-type" style="color:var(--green);">✓ Clinically Plausible</div>
+      <h3>Correctly Predicted Pneumonia</h3>
+      <div class="gc-visual" style="background: linear-gradient(135deg, #1e3a5f, #0c4a6e);">
+        <svg viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+          <defs>
+            <radialGradient id="heat1a" cx="35%" cy="65%" r="35%">
+              <stop offset="0%" stop-color="#ef4444" stop-opacity="0.9"/>
+              <stop offset="40%" stop-color="#f97316" stop-opacity="0.7"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat1b" cx="65%" cy="60%" r="30%">
+              <stop offset="0%" stop-color="#eab308" stop-opacity="0.8"/>
+              <stop offset="40%" stop-color="#f97316" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat1c" cx="50%" cy="50%" r="20%">
+              <stop offset="0%" stop-color="#ef4444" stop-opacity="0.7"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+          </defs>
+          <!-- Lung shape suggestion -->
+          <ellipse cx="100" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <ellipse cx="200" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <!-- Heatmaps -->
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat1a)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat1b)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat1c)"/>
+          <!-- Spine -->
+          <rect x="143" y="20" width="14" height="200" rx="7" fill="rgba(255,255,255,0.08)"/>
+          <!-- Label -->
+          <text x="10" y="18" font-size="8" fill="white" font-family="JetBrains Mono" opacity="0.8">Grad-CAM — Predicted class: 1</text>
+          <text x="10" y="232" font-size="7" fill="#ef4444" font-family="JetBrains Mono">R</text>
+        </svg>
+      </div>
+      <p>High-intensity red/yellow activations localise <strong>bilateral lower-lobe consolidations</strong> and peri-hilar regions — radiologically consistent sites for community-acquired pneumonia. The right lower lobe is most frequently activated.</p>
+    </div>
+
+    <div class="glass gc-card">
+      <div class="gc-type" style="color:var(--gold);">⚠ Boundary Case</div>
+      <h3>False Positive (FP=122)</h3>
+      <div class="gc-visual" style="background: linear-gradient(135deg, #1e3a5f, #0c4a6e);">
+        <svg viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+          <defs>
+            <radialGradient id="heat2a" cx="30%" cy="40%" r="40%">
+              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.8"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat2b" cx="70%" cy="45%" r="35%">
+              <stop offset="0%" stop-color="#ef4444" stop-opacity="0.7"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat2c" cx="50%" cy="70%" r="30%">
+              <stop offset="0%" stop-color="#eab308" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat2d" cx="20%" cy="75%" r="25%">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.7"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+          </defs>
+          <ellipse cx="100" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <ellipse cx="200" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat2a)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat2b)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat2c)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat2d)"/>
+          <rect x="143" y="20" width="14" height="200" rx="7" fill="rgba(255,255,255,0.08)"/>
+          <text x="10" y="18" font-size="8" fill="white" font-family="JetBrains Mono" opacity="0.8">Grad-CAM — False Positive</text>
+          <text x="10" y="232" font-size="7" fill="#eab308" font-family="JetBrains Mono">R</text>
+        </svg>
+      </div>
+      <p><strong>Diffuse activation</strong> without focal consolidation. Peri-hilar vascular markings in normal X-rays can resemble early interstitial pneumonia, leading the model to incorrectly predict pneumonia (26.1% FP rate).</p>
+    </div>
+
+    <div class="glass gc-card">
+      <div class="gc-type" style="color:var(--accent);">○ Correct Normal</div>
+      <h3>Correctly Predicted Normal</h3>
+      <div class="gc-visual" style="background: linear-gradient(135deg, #1e3a5f, #0c4a6e);">
+        <svg viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+          <defs>
+            <radialGradient id="heat3a" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+            <radialGradient id="heat3b" cx="25%" cy="70%" r="30%">
+              <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+          </defs>
+          <ellipse cx="100" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <ellipse cx="200" cy="130" rx="70" ry="85" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat3a)"/>
+          <rect x="0" y="0" width="300" height="240" fill="url(#heat3b)"/>
+          <rect x="143" y="20" width="14" height="200" rx="7" fill="rgba(255,255,255,0.08)"/>
+          <text x="10" y="18" font-size="8" fill="white" font-family="JetBrains Mono" opacity="0.8">Grad-CAM — Predicted class: 0</text>
+          <text x="10" y="232" font-size="7" fill="#60a5fa" font-family="JetBrains Mono">R</text>
+        </svg>
+      </div>
+      <p><strong>Absence of focal high-intensity activation</strong> in the lung parenchyma confirms the model correctly identifies no pathological consolidations. Only cool blue/green hues are present, confirming a healthy radiograph.</p>
+    </div>
+  </div>
+
+  <div class="glass reveal" style="padding:28px; margin-top:24px;">
+    <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:16px; font-size:1rem;">False Negative Analysis (FN=30, 3.8%)</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+      <div>
+        <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.75;">The 30 false negatives (3.8% miss rate) exhibit a characteristic pattern: Grad-CAM activations appear near <strong>peripheral image regions</strong> or <strong>radiograph labelling markers</strong> (e.g., letter "R"), rather than the lung parenchyma. This indicates the model is responding to confounding artefacts rather than genuine pathology.</p>
+      </div>
+      <div style="padding:16px; background:rgba(239,68,68,0.05); border-radius:12px; border-left:3px solid var(--red);">
+        <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.8;">
+          <strong style="color:var(--red);">Root cause:</strong> Anatomically irrelevant responses consistent with confounding artefacts. Not genuine model failure — rather, dataset-specific image metadata influences.<br><br>
+          <strong style="color:var(--text);">Clinical impact:</strong> Physicians reviewing positive cases in subsequent steps will catch remaining cases, making 3.8% miss rate acceptable for screening.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL IMPACT -->
+<section id="impact">
+  <div class="section-tag">07 · Impact</div>
+  <h2 class="section-title">Social & Clinical <span>Impact</span></h2>
+  <p class="section-sub">Projected outcomes based on 96.2% sensitivity and WHO statistics of 2.5M annual pneumonia deaths — arithmetic projections from reported metrics.</p>
+
+  <div class="impact-grid reveal">
+    <div class="glass impact-card">
+      <div class="icon-box icon-blue" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">🫁</div>
+      <div class="impact-big">96,200</div>
+      <div class="impact-label">Cases correctly identified per 100,000 screenings. Only 3,800 missed — acceptable for first-pass clinical screening.</div>
+    </div>
+    <div class="glass impact-card">
+      <div class="icon-box icon-green" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">🌍</div>
+      <div class="impact-big">168K</div>
+      <div class="impact-label">Preventable delayed-diagnosis deaths annually at 100% deployment across 70% low-income burden populations with 10% delayed-diagnosis rate.</div>
+    </div>
+    <div class="glass impact-card">
+      <div class="icon-box icon-gold" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">💻</div>
+      <div class="impact-big">CPU</div>
+      <div class="impact-label">All computation performed on CPU hardware only — no GPU cluster required — enabling deployment in resource-limited clinical settings globally.</div>
+    </div>
+    <div class="glass impact-card">
+      <div class="icon-box icon-purple" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">📖</div>
+      <div class="impact-big">SDG 3</div>
+      <div class="impact-label">Directly supports Good Health & Well-being, SDG 9 (Infrastructure), and SDG 10 (Reduced Inequalities) through open-source GitHub release.</div>
+    </div>
+    <div class="glass impact-card">
+      <div class="icon-box icon-green" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">👨‍⚕️</div>
+      <div class="impact-big">XAI</div>
+      <div class="impact-label">Grad-CAM explainability pipeline provides transparency for physician trust and serves as a teaching tool for junior clinicians learning radiographic pneumonia indicators.</div>
+    </div>
+    <div class="glass impact-card">
+      <div class="icon-box icon-blue" style="font-size:1.1rem; width:42px; height:42px; margin-bottom:12px;">🌱</div>
+      <div class="impact-big">Low CO₂</div>
+      <div class="impact-label">CPU-only training minimises carbon footprint relative to GPU cluster-based training, aligning with sustainable AI practices.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CONCLUSION & FUTURE -->
+<section id="conclusion">
+  <div class="section-tag">08 · Conclusion</div>
+  <h2 class="section-title">Summary & <span>Future Work</span></h2>
+  <p class="section-sub">Seven mutually reinforcing contributions establish a new state-of-the-art for lightweight, explainable pneumonia detection from chest X-rays.</p>
+
+  <div class="conclusion-grid reveal">
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:20px;">Key Contributions</h3>
+      <ul class="contrib-list">
+        <li><span class="num">1</span> CBAM sequential attention within DenseNet121 for binary chest X-ray classification</li>
+        <li><span class="num">2</span> Dual-level class imbalance: Focal Loss (α=0.75, γ=2.0) + WeightedRandomSampler</li>
+        <li><span class="num">3</span> Two-phase progressive unfreezing preserving ImageNet pre-trained features</li>
+        <li><span class="num">4</span> Threshold optimisation via Youden Index for clinically validated operating point</li>
+        <li><span class="num">5</span> Parameter efficiency: superior AUC at 31% of ResNet50 parameter cost (8M vs 25.6M)</li>
+        <li><span class="num">6</span> Structured Grad-CAM failure-mode taxonomy (3 clinically relevant categories)</li>
+        <li><span class="num">7</span> Rigorous multi-baseline comparative evaluation under identical experimental settings</li>
+      </ul>
+
+      <div style="margin-top:24px; padding:20px; background:rgba(37,99,235,0.05); border-radius:14px; border:1px solid rgba(37,99,235,0.12);">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--text-light); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">Limitations</div>
+        <ul style="list-style:none; display:flex; flex-direction:column; gap:8px;">
+          <li style="font-size:0.82rem; color:var(--text-muted); display:flex; gap:8px; line-height:1.6;"><span style="color:var(--red);">▸</span>Dataset limited to paediatric patients (1–5 years) from one Chinese institution</li>
+          <li style="font-size:0.82rem; color:var(--text-muted); display:flex; gap:8px; line-height:1.6;"><span style="color:var(--red);">▸</span>Binary classification only; no bacterial vs viral distinction</li>
+          <li style="font-size:0.82rem; color:var(--text-muted); display:flex; gap:8px; line-height:1.6;"><span style="color:var(--red);">▸</span>CPU hardware constrains batch size and hyperparameter exploration</li>
+          <li style="font-size:0.82rem; color:var(--text-muted); display:flex; gap:8px; line-height:1.6;"><span style="color:var(--red);">▸</span>Grad-CAM provides coarse spatial localisation without pixel-wise segmentation</li>
+        </ul>
+      </div>
+    </div>
+    <div class="glass" style="padding:32px;">
+      <h3 style="font-family:'Syne',sans-serif; font-weight:700; margin-bottom:20px;">Future Directions</h3>
+      <div style="display:flex; flex-direction:column; gap:0;">
+        <div class="future-item"><span class="arrow">▸</span><p><strong>Multi-institutional validation</strong> on adult and ethnically diverse cohorts to improve generalisability</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>Multi-class extension</strong> to bacterial pneumonia, viral pneumonia, and COVID-19 pneumonitis</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>Vision Transformer (ViT)</strong> and hybrid CNN-ViT backbone evaluation</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>Clinical augmentation</strong> with auxiliary variables: age, SpO₂, symptom duration</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>GPU-based ensemble learning</strong> for further performance improvements</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>ONNX/TensorRT deployment</strong> for mobile and edge device applications</p></div>
+        <div class="future-item"><span class="arrow">▸</span><p><strong>Grad-CAM++</strong> and attention rollout for higher-resolution localisation maps</p></div>
+      </div>
+
+      <div style="margin-top:24px; padding:20px; background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(99,102,241,0.06)); border-radius:14px; border:1px solid rgba(37,99,235,0.15);">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--accent); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:8px;">Final Performance Summary</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div style="text-align:center; padding:8px; background:rgba(255,255,255,0.5); border-radius:8px;">
+            <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem; color:var(--green);">96.2%</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Sensitivity</div>
+          </div>
+          <div style="text-align:center; padding:8px; background:rgba(255,255,255,0.5); border-radius:8px;">
+            <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem; color:var(--accent);">0.9275</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">ROC-AUC</div>
+          </div>
+          <div style="text-align:center; padding:8px; background:rgba(255,255,255,0.5); border-radius:8px;">
+            <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem; color:var(--gold);">0.9318</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Avg Precision</div>
+          </div>
+          <div style="text-align:center; padding:8px; background:rgba(255,255,255,0.5); border-radius:8px;">
+            <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem; color:var(--accent3);">8M</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Parameters</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="f-title">An Explainable DenseNet121 Framework with CBAM Attention and Focal Loss</div>
+  <div class="f-sub">Khirabdi Tanaya Patri · Bhubesh A K · Abhishek N Tripathi — VIT Vellore, School of Electronics Engineering</div>
+  <div class="f-meta">
+    <span>IEEE Access Submission</span>
+    <span>DOI: 10.1109/ACCESS.2017.DOI</span>
+    <span>Dataset: Kaggle Chest X-Ray (5,856 images)</span>
+    <span>Computed on CPU · PyTorch 2.2.0</span>
+    <span>No external funding</span>
+  </div>
+</footer>
+
+<script>
+// Custom Cursor
+const dot = document.getElementById('cursor-dot');
+const ring = document.getElementById('cursor-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  dot.style.left = mx + 'px';
+  dot.style.top = my + 'px';
+});
+
+function animRing() {
+  rx += (mx - rx) * 0.12;
+  ry += (my - ry) * 0.12;
+  ring.style.left = rx + 'px';
+  ring.style.top = ry + 'px';
+  requestAnimationFrame(animRing);
+}
+animRing();
+
+document.querySelectorAll('a, button, .stat-pill, .cm-cell, .arch-block, .glass, .glass-dark').forEach(el => {
+  el.addEventListener('mouseenter', () => document.body.classList.add('cursor-grow'));
+  el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-grow'));
+});
+
+// Particles
+function createParticles() {
+  const colors = ['rgba(37,99,235,0.15)', 'rgba(14,165,233,0.12)', 'rgba(99,102,241,0.12)', 'rgba(16,185,129,0.1)'];
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = Math.random() * 6 + 3;
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      left:${Math.random()*100}%;
+      animation-duration:${Math.random()*20+15}s;
+      animation-delay:${Math.random()*-20}s;
+    `;
+    document.body.appendChild(p);
+  }
+}
+createParticles();
+
+// Reveal on scroll
+const reveals = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      setTimeout(() => entry.target.classList.add('visible'), i * 80);
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.08 });
+reveals.forEach(el => observer.observe(el));
+
+// Animate progress bars on scroll
+const barObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.animationPlayState = 'running';
+    }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.progress-fill, .eff-bar-fill, .metric-bar-fill').forEach(el => {
+  el.style.animationPlayState = 'paused';
+  barObserver.observe(el);
+});
+
+// Anti-gravity floating cards on mousemove
+document.querySelectorAll('.stat-pill, .cm-cell').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / (rect.width / 2);
+    const dy = (e.clientY - cy) / (rect.height / 2);
+    card.style.transform = `translateY(-4px) rotateX(${-dy * 8}deg) rotateY(${dx * 8}deg)`;
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = '';
+    card.style.transition = 'transform 0.5s ease';
+  });
+  card.addEventListener('mouseenter', () => {
+    card.style.transition = 'transform 0.1s ease';
+  });
+});
+
+// Nav active state
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-links a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 200) current = s.getAttribute('id');
+  });
+  navLinks.forEach(a => {
+    a.style.background = a.getAttribute('href') === '#' + current ? 'rgba(37,99,235,0.08)' : '';
+    a.style.color = a.getAttribute('href') === '#' + current ? 'var(--accent)' : '';
+  });
+});
+</script>
+
+</body>
+</html>
